@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "767357647694",
+    "project_id": "buy-book-pop",
+    "storage_bucket": "buy-book-pop.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:767357647694:android:7a0ac5f9bba39b2a443c1f",
+        "android_client_info": {
+          "package_name": "com.example.flutter_web_pop"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "767357647694-0r8dkf1vraog92kcsch5nf5eoga62v9s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8wkjFeKAA3CQXD0BrYiIadamXmmBO9Co"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "767357647694-0r8dkf1vraog92kcsch5nf5eoga62v9s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
