@@ -46,3 +46,11 @@ You can deploy now or later. To deploy now, open a terminal window, then navigat
 Put your static files (e.g., HTML, CSS, JS) in your app’s deploy directory (the default is “public”). Then, run this command from your app’s root directory:
 `firebase deploy`
 After deploying, view your app at buy-book-pop.web.app
+
+## EmailJS
+### Details
+https://dashboard.emailjs.com/admin
+
+#### Account details
+buyabookflutter@gmail.com
+BuyABook
