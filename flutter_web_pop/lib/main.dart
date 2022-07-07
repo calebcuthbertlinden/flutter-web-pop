@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -10,6 +11,11 @@ import 'package:http/http.dart' as http;
 import 'package:random_string/random_string.dart';
 
 import 'firebase_options.dart';
+
+const serviceId = 'service_vsvho66';
+const userId = 'lffizDAZyIE4RXMr_';
+const accessToken = 's88QszBbXbVv3sBYPJA2l';
+final emailUrl = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
 
 void main() async {
   final FirebaseApp app = await Firebase.initializeApp(
@@ -71,59 +77,85 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  /// Show snack bar notification
+  showSnackBar(context, String snackbarText) {
+    late SnackBar snackBar = SnackBar(
+      duration: const Duration(seconds: 10),
+      content: Text(snackbarText),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+  }
+
+
+  // Firebase firestore integration
+  // ---------------------------------------------------------------------------
+
+  createDatabaseReference(reference, address) {
+    var firestoreDb = FirebaseFirestore.instance;
+    final order = <String, dynamic>{"reference": reference, "email": address, "state": "INITIATED"};
+    firestoreDb
+        .collection("orders")
+        .doc(reference)
+        .set(order)
+        .then((value) => log('DocumentSnapshot added', name: 'generateReferenceAndEmail'))
+        .onError(
+            (error, stackTrace) => log('DocumentSnapshot added: $error', name: 'generateReferenceAndEmail'));
+  }
+
   updateDatabaseReference(Map<String, dynamic> doc) {
+    const functionName = 'updateDatabaseReference';
     var firestoreDb = FirebaseFirestore.instance;
     doc["state"] = "COMPLETE";
     firestoreDb
         .collection("orders")
         .doc(doc["reference"])
         .set(doc)
-        .then((value) => print('DocumentSnapshot added'))
-        .onError((error, stackTrace) => print('DocumentSnapshot added: $error'));
+        .then((value) => log('DocumentSnapshot added', name: functionName))
+        .onError((error, stackTrace) => log('DocumentSnapshot added: $error', name: functionName));
   }
 
-  sendCompleteEmail(context, address, reference) async {
-    late SnackBar snackBar;
-    final url = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
-    const serviceId = 'service_vsvho66';
-    const templateId = 'template_4rj2e0d';
-    const userId = 'lffizDAZyIE4RXMr_';
-    const accessToken = 's88QszBbXbVv3sBYPJA2l';
-    final response = await http.post(url,
+  // Send Email through EmailJS
+  // ---------------------------------------------------------------------------
+
+  sendEmail(templateParams, templateId) async {
+    return await http.post(emailUrl,
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'service_id': serviceId,
           'template_id': templateId,
           'user_id': userId,
           'accessToken': accessToken,
-          'template_params': {'reference': reference, 'to_email': address}
+          'template_params': templateParams
         }));
-
-    if (response.statusCode == 200) {
-      snackBar = const SnackBar(
-        duration: Duration(seconds: 10),
-        content: Text(
-            'Thank you for uploading your proof of payment.'),
-      );
-    } else {
-      snackBar = const SnackBar(
-        duration: Duration(seconds: 10),
-        content: Text('There was an error emailing this reference'),
-      );
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
 
-  /// Pick file for upload
+  sendCompleteEmail(context, address, reference) async {
+    final response = await sendEmail({'reference': reference, 'to_email': address}, "template_4rj2e0d");
+    if (response.statusCode == 200) {
+      showSnackBar(context, 'Thank you for uploading your proof of payment.');
+    } else {
+      showSnackBar(context, 'There was an error emailing this reference');
+    }
+  }
+
+  sendInitiateEmail(reference, address) async {
+    final response = await sendEmail(
+        {'reference': reference, 'to_email': address}, "template_ywkh5rk");
+    return response;
+  }
+
+  // Actions initiated from each alert dialog
+  // ---------------------------------------------------------------------------
+
   filePicker(context, reference) async {
+    const functionName = 'filePicker';
     // Check if reference exists
     var firestoreDb = FirebaseFirestore.instance;
     final docRef = firestoreDb.collection("orders").doc(reference);
     var emailAddress = "";
     docRef.get().then(
       (DocumentSnapshot doc) {
-        print("Document found: $doc");
+        log("Document found: $doc", name: 'filePicker');
         if (doc.exists) {
           final data = doc.data() as Map<String, dynamic>;
           if (data["state"] == "INITIATED") {
@@ -144,35 +176,39 @@ class _MyHomePageState extends State<MyHomePage> {
                     }
                 });
           } else if (data["state"] == "COMPLETE") {
-            print("Proof of payment already uploaded");
-            SnackBar snackBar = const SnackBar(
-              duration: Duration(seconds: 10),
-              content: Text('Proof of payment already uploaded for this reference'),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(snackBar);
+            log("Proof of payment already uploaded", name: functionName);
+            showSnackBar(context, 'Proof of payment already uploaded for this reference');
             Navigator.of(context, rootNavigator: true).pop("result");
           } else {
-            print("Document doesn't exist");
-            SnackBar snackBar = const SnackBar(
-              duration: Duration(seconds: 10),
-              content: Text('There is no existing payment with this reference'),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(snackBar);
+            log("Document doesn't exist", name: functionName);
+            showSnackBar(context, 'There is no existing payment with this reference');
             Navigator.of(context, rootNavigator: true).pop("result");
           }
         } else {
-          print("Document doesn't exist");
-          SnackBar snackBar = const SnackBar(
-            duration: Duration(seconds: 10),
-            content: Text('There is no existing payment with this reference'),
-          );
-          ScaffoldMessenger.of(context).showSnackBar(snackBar);
+          log("Document doesn't exist", name: functionName);
+          showSnackBar(context, 'There is no existing payment with this reference');
           Navigator.of(context, rootNavigator: true).pop("result");
         }
       },
-      onError: (e) => print("Error getting document: $e"),
+      onError: (e) => log("Error getting document: $e", name: functionName),
     ).onError((error, stackTrace) => null);
   }
+
+  generateReferenceAndEmail(context, address) async {
+    String reference = randomAlphaNumeric(10);
+    var response = await sendInitiateEmail(reference, address);
+    if (response.statusCode == 200) {
+      showSnackBar(context,
+          'Your reference number has been emailed to this address: $address. Once payment is complete, please proceed to upload proof of payment.');
+    } else {
+      showSnackBar(context, 'There was an error emailing this reference');
+    }
+    Navigator.of(context, rootNavigator: true).pop("result");
+    createDatabaseReference(reference, address);
+  }
+
+  // Alert Dialogs for generating a reference or uploading proof of purchase
+  // ---------------------------------------------------------------------------
 
   /// Show dialog to enter reference number and select file
   showDialogForUpload() {
@@ -211,56 +247,6 @@ class _MyHomePageState extends State<MyHomePage> {
             elevation: 24.0);
       },
     );
-  }
-
-  generateReferenceAndEmail(context, address) async {
-    late SnackBar snackBar;
-
-    String reference = randomAlphaNumeric(10);
-
-    final url = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
-    const serviceId = 'service_vsvho66';
-    const templateId = 'template_ywkh5rk';
-    const userId = 'lffizDAZyIE4RXMr_';
-    const accessToken = 's88QszBbXbVv3sBYPJA2l';
-    final response = await http.post(url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'service_id': serviceId,
-          'template_id': templateId,
-          'user_id': userId,
-          'accessToken': accessToken,
-          'template_params': {'to_name': "Caleb", 'reference': reference, 'to_email': address}
-        }));
-
-    if (response.statusCode == 200) {
-      snackBar = SnackBar(
-        duration: const Duration(seconds: 10),
-        content: Text(
-            'Your reference number has been emailed to this address: $address. Once payment is complete, please proceed to upload proof of payment.'),
-      );
-    } else {
-      snackBar = const SnackBar(
-        duration: Duration(seconds: 10),
-        content: Text('There was an error emailing this reference'),
-      );
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(snackBar);
-    Navigator.of(context, rootNavigator: true).pop("result");
-
-    var firestoreDb = FirebaseFirestore.instance;
-    final order = <String, dynamic>{
-      "reference": reference,
-      "email": address,
-      "state": "INITIATED"
-    };
-    firestoreDb
-        .collection("orders")
-        .doc(reference)
-        .set(order)
-        .then((value) => print('DocumentSnapshot added'))
-        .onError((error, stackTrace) => print('DocumentSnapshot added: $error'));
   }
 
   /// Show dialog for payment details and emailing reference
