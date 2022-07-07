@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:random_string/random_string.dart';
 
 import 'firebase_options.dart';
 
@@ -67,17 +71,112 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  /// Pick file for upload
-  filePicker(context) async {
-    var picked = await FilePicker.platform.pickFiles();
-    if (picked != null) {
-      uploadString(picked.files.first.name);
-      Navigator.of(context, rootNavigator: true).pop("result");
+  updateDatabaseReference(Map<String, dynamic> doc) {
+    var firestoreDb = FirebaseFirestore.instance;
+    doc["state"] = "COMPLETE";
+    firestoreDb
+        .collection("orders")
+        .doc(doc["reference"])
+        .set(doc)
+        .then((value) => print('DocumentSnapshot added'))
+        .onError((error, stackTrace) => print('DocumentSnapshot added: $error'));
+  }
+
+  sendCompleteEmail(context, address, reference) async {
+    late SnackBar snackBar;
+    final url = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
+    const serviceId = 'service_vsvho66';
+    const templateId = 'template_4rj2e0d';
+    const userId = 'lffizDAZyIE4RXMr_';
+    const accessToken = 's88QszBbXbVv3sBYPJA2l';
+    final response = await http.post(url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'service_id': serviceId,
+          'template_id': templateId,
+          'user_id': userId,
+          'accessToken': accessToken,
+          'template_params': {'reference': reference, 'to_email': address}
+        }));
+
+    if (response.statusCode == 200) {
+      snackBar = const SnackBar(
+        duration: Duration(seconds: 10),
+        content: Text(
+            'Thank you for uploading your proof of payment.'),
+      );
+    } else {
+      snackBar = const SnackBar(
+        duration: Duration(seconds: 10),
+        content: Text('There was an error emailing this reference'),
+      );
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+  }
+
+  /// Pick file for upload
+  filePicker(context, reference) async {
+    // Check if reference exists
+    var firestoreDb = FirebaseFirestore.instance;
+    final docRef = firestoreDb.collection("orders").doc(reference);
+    var emailAddress = "";
+    docRef.get().then(
+      (DocumentSnapshot doc) {
+        print("Document found: $doc");
+        if (doc.exists) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data["state"] == "INITIATED") {
+            emailAddress = data["email"];
+            FilePicker.platform.pickFiles().then((value) => {
+                  if (value != null)
+                    {
+                      uploadString(value.files.first.name),
+                      updateDatabaseReference(data),
+                      sendCompleteEmail(context, emailAddress, reference),
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          duration: const Duration(seconds: 10),
+                          content: Text('Document uploaded for payment reference $reference'),
+                        ),
+                      ),
+                      Navigator.of(context, rootNavigator: true).pop("result")
+                    }
+                });
+          } else if (data["state"] == "COMPLETE") {
+            print("Proof of payment already uploaded");
+            SnackBar snackBar = const SnackBar(
+              duration: Duration(seconds: 10),
+              content: Text('Proof of payment already uploaded for this reference'),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(snackBar);
+            Navigator.of(context, rootNavigator: true).pop("result");
+          } else {
+            print("Document doesn't exist");
+            SnackBar snackBar = const SnackBar(
+              duration: Duration(seconds: 10),
+              content: Text('There is no existing payment with this reference'),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(snackBar);
+            Navigator.of(context, rootNavigator: true).pop("result");
+          }
+        } else {
+          print("Document doesn't exist");
+          SnackBar snackBar = const SnackBar(
+            duration: Duration(seconds: 10),
+            content: Text('There is no existing payment with this reference'),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(snackBar);
+          Navigator.of(context, rootNavigator: true).pop("result");
+        }
+      },
+      onError: (e) => print("Error getting document: $e"),
+    ).onError((error, stackTrace) => null);
   }
 
   /// Show dialog to enter reference number and select file
   showDialogForUpload() {
+    final referenceController = TextEditingController();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -88,41 +187,80 @@ class _MyHomePageState extends State<MyHomePage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.start,
-              children: const [
-                Padding(
+              children: [
+                const Padding(
                     padding: EdgeInsets.fromLTRB(0, 8, 0, 8),
                     child: Text("First enter the reference number for the payment/order")),
                 TextField(
-                  decoration: InputDecoration(
+                  controller: referenceController,
+                  decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     hintText: 'Enter reference number',
                   ),
                 ),
-                Padding(
-                    padding: EdgeInsets.fromLTRB(0, 8, 0, 8), child: Text("Select file you want to upload")),
               ],
             ),
             actions: [
               TextButton(
                   onPressed: () => {Navigator.of(context, rootNavigator: true).pop("result")},
                   child: const Text("Cancel")),
-              TextButton(onPressed: () => {filePicker(context)}, child: const Text("Select file"))
+              TextButton(
+                  onPressed: () => {filePicker(context, referenceController.text)},
+                  child: const Text("Select file"))
             ],
             elevation: 24.0);
       },
     );
   }
 
-  generateReferenceAndEmail(context, address) {
-    Navigator.of(context, rootNavigator: true).pop("result");
-    SnackBar snackBar = SnackBar(
-      duration: const Duration(seconds: 10),
-      content: Text('Your reference number has been emailed to this address: $address. Once payment is complete, please proceed to upload proof of payment.'),
-    );
+  generateReferenceAndEmail(context, address) async {
+    late SnackBar snackBar;
 
-    // Find the ScaffoldMessenger in the widget tree
-    // and use it to show a SnackBar.
+    String reference = randomAlphaNumeric(10);
+
+    final url = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
+    const serviceId = 'service_vsvho66';
+    const templateId = 'template_ywkh5rk';
+    const userId = 'lffizDAZyIE4RXMr_';
+    const accessToken = 's88QszBbXbVv3sBYPJA2l';
+    final response = await http.post(url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'service_id': serviceId,
+          'template_id': templateId,
+          'user_id': userId,
+          'accessToken': accessToken,
+          'template_params': {'to_name': "Caleb", 'reference': reference, 'to_email': address}
+        }));
+
+    if (response.statusCode == 200) {
+      snackBar = SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text(
+            'Your reference number has been emailed to this address: $address. Once payment is complete, please proceed to upload proof of payment.'),
+      );
+    } else {
+      snackBar = const SnackBar(
+        duration: Duration(seconds: 10),
+        content: Text('There was an error emailing this reference'),
+      );
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    Navigator.of(context, rootNavigator: true).pop("result");
+
+    var firestoreDb = FirebaseFirestore.instance;
+    final order = <String, dynamic>{
+      "reference": reference,
+      "email": address,
+      "state": "INITIATED"
+    };
+    firestoreDb
+        .collection("orders")
+        .doc(reference)
+        .set(order)
+        .then((value) => print('DocumentSnapshot added'))
+        .onError((error, stackTrace) => print('DocumentSnapshot added: $error'));
   }
 
   /// Show dialog for payment details and emailing reference
@@ -155,7 +293,9 @@ class _MyHomePageState extends State<MyHomePage> {
               TextButton(
                   onPressed: () => {Navigator.of(context, rootNavigator: true).pop("result")},
                   child: const Text("Cancel")),
-              TextButton(onPressed: () => {generateReferenceAndEmail(context, emailController.text)}, child: const Text("Generate reference")),
+              TextButton(
+                  onPressed: () => {generateReferenceAndEmail(context, emailController.text)},
+                  child: const Text("Generate reference")),
             ],
             elevation: 24.0);
       },
