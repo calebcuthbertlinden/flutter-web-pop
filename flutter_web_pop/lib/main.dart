@@ -12,9 +12,9 @@ import 'package:random_string/random_string.dart';
 
 import 'firebase_options.dart';
 
-const serviceId = 'service_vsvho66';
-const userId = 'lffizDAZyIE4RXMr_';
-const accessToken = 's88QszBbXbVv3sBYPJA2l';
+const serviceId = 'insert_service_id';
+const userId = 'insert_user_id';
+const accessToken = 'insert_access_token';
 final emailUrl = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
 
 void main() async {
@@ -196,6 +196,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   generateReferenceAndEmail(context, address) async {
     String reference = randomAlphaNumeric(10);
+    createDatabaseReference(reference, address);
     var response = await sendInitiateEmail(reference, address);
     if (response.statusCode == 200) {
       showSnackBar(context,
@@ -204,7 +205,6 @@ class _MyHomePageState extends State<MyHomePage> {
       showSnackBar(context, 'There was an error emailing this reference');
     }
     Navigator.of(context, rootNavigator: true).pop("result");
-    createDatabaseReference(reference, address);
   }
 
   // Alert Dialogs for generating a reference or uploading proof of purchase
